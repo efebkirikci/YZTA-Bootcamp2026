@@ -1,38 +1,23 @@
-# **Takım İsmi**
+# CopyTrader
 
-Takım 36
+Kripto copy trading botu — YZTA Bootcamp 2026 · Takım 36
 
-# Ürün İle İlgili Bilgiler
+Binance public API'den canlı piyasa verisi çeken, sinyal üreten ve
+pozisyonları otomatik kopyalayan modüler bir trading botu.
 
-## Takım Elemanları
+## Fikir
 
-- 
-- 
-- 
+- "Master" strateji motoru sinyal üretir, bot ("copier") pozisyonları kopyalar
+- API anahtarı gerekmez — piyasa verisi tamamen public endpoint'lerden gelir
+- Paper mod ile risksiz simülasyon; Binance API key verilirse live mod
 
-## Ürün İsmi
+## Yol Haritası
 
+- [ ] Binance public veri katmanı
+- [ ] Funding rate stratejisi
+- [ ] Teknik indikatör stratejisi
+- [ ] Paper trading motoru + risk yönetimi
+- [ ] Web dashboard (canlı görüntüleme + ayar)
+- [ ] Docker dağıtımı
 
-
-## Ürün Açıklaması
-
-## Ürün Özellikleri
-- 
-- 
-- 
-- 
-
-## Hedef Kitle
-- 
-- 
-- 
-- 
-- 
-
-## Product Backlog URL
-
-# Sprint 1
-# Sprint 2
-# Sprint 3
-
----
+Detay: `docs/FIKIR.md`
