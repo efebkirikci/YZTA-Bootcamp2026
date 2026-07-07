@@ -1,16 +1,34 @@
-"""Paper trading engine v1 — SQLite tabanlı pozisyon simülasyonu.
+"""Paper trading engine — SQLite tabanlı pozisyon simülasyonu.
 
-Pozisyon aç/kapa, gerçekleşen/gerçekleşmemiş PnL ve equity takibi.
-Funding slot mekaniği bir sonraki adımda eklenecek.
+Funding ödemeleri Binance'in SABİT 8 saatlik slotlarına göre işlenir
+(00/08/16 UTC). Pozisyon açılış saatine göre değil, slot geçişine göre
+ödeme alınır: 12:08'de açılan pozisyon ilk ödemesini 16:00'da alır.
 """
 
 import logging
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger("paper")
 
 INITIAL_CAPITAL = 1000.0
+
+
+def funding_slots_between(start: datetime, end: datetime) -> list[datetime]:
+    """(start, end] aralığında geçilen sabit 8 saatlik UTC slotları."""
+    slots: list[datetime] = []
+    cursor = start
+    for _ in range(16):
+        for h in (0, 8, 16):
+            slot = cursor.replace(hour=h, minute=0, second=0, microsecond=0)
+            if start < slot <= end:
+                slots.append(slot)
+        cursor = (cursor.replace(hour=0, minute=0, second=0, microsecond=0)
+                  + timedelta(days=1))
+        if cursor > end + timedelta(days=1):
+            break
+    return sorted(set(slots))
 
 
 class PaperEngine:
@@ -34,6 +52,7 @@ class PaperEngine:
                 strategy TEXT NOT NULL,
                 size_usd REAL NOT NULL,
                 entry_price REAL NOT NULL,
+                entry_funding_rate REAL DEFAULT 0,
                 status TEXT DEFAULT 'open',
                 opened_at TEXT DEFAULT (datetime('now')),
                 closed_at TEXT,
@@ -52,6 +71,13 @@ class PaperEngine:
                 kind TEXT DEFAULT 'open',
                 created_at TEXT DEFAULT (datetime('now'))
             );
+            CREATE TABLE IF NOT EXISTS paper_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                position_id INTEGER NOT NULL,
+                slot_time TEXT NOT NULL,
+                rate REAL NOT NULL,
+                amount_usd REAL NOT NULL
+            );
             """
         )
         self._conn.execute(
@@ -60,6 +86,7 @@ class PaperEngine:
         )
         self._conn.commit()
 
+    # (önceki sürümdeki metodlar aynen korunur)
     def initial_capital(self) -> float:
         row = self._conn.execute(
             "SELECT value FROM paper_meta WHERE key='initial_capital'").fetchone()
@@ -100,9 +127,9 @@ class PaperEngine:
     def open_position(self, symbol: str, side: str, strategy: str, size_usd: float,
                       price: float, funding_rate: float = 0.0, reason: str = "") -> int:
         cur = self._conn.execute(
-            "INSERT INTO paper_positions (symbol, side, strategy, size_usd, entry_price, reason) "
-            "VALUES (?,?,?,?,?,?)",
-            (symbol, side, strategy, size_usd, price, reason))
+            "INSERT INTO paper_positions (symbol, side, strategy, size_usd, entry_price, "
+            "entry_funding_rate, reason) VALUES (?,?,?,?,?,?,?)",
+            (symbol, side, strategy, size_usd, price, funding_rate, reason))
         pos_id = cur.lastrowid
         self._conn.execute(
             "INSERT INTO paper_trades (position_id, symbol, side, size_usd, price, kind) "
@@ -135,6 +162,41 @@ class PaperEngine:
         else:
             ret = (p["entry_price"] - price) / p["entry_price"] if p["entry_price"] else 0
         return p["size_usd"] * ret
+
+    def process_funding_payments(self, rates: dict[str, float],
+                                 now: datetime | None = None) -> int:
+        """Açık pozisyonlar için geçilen her slotta ödeme işle."""
+        now = now or datetime.now(timezone.utc)
+        paid = 0
+        for p in self.open_positions():
+            if p["strategy"] != "funding":
+                continue
+            rate = rates.get(p["symbol"])
+            if rate is None:
+                continue
+            last = self._conn.execute(
+                "SELECT slot_time FROM paper_payments WHERE position_id=? "
+                "ORDER BY slot_time DESC LIMIT 1", (p["id"],)).fetchone()
+            start = datetime.fromisoformat(last["slot_time"]) if last else                 datetime.fromisoformat(p["opened_at"])
+            for slot in funding_slots_between(start, now):
+                if p["side"] == "LONG":
+                    amount = -rate * p["size_usd"]   # negatif funding → long ödeme alır
+                else:
+                    amount = rate * p["size_usd"]    # pozitif funding → short ödeme alır
+                self._conn.execute(
+                    "INSERT INTO paper_payments (position_id, slot_time, rate, amount_usd) "
+                    "VALUES (?,?,?,?)",
+                    (p["id"], slot.isoformat(), rate, amount))
+                paid += 1
+        if paid:
+            self._conn.commit()
+        return paid
+
+    def funding_collected(self, position_id: int) -> float:
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(amount_usd),0) FROM paper_payments WHERE position_id=?",
+            (position_id,)).fetchone()
+        return float(row[0])
 
     def recent_trades(self, limit: int = 20) -> list[dict]:
         rows = self._conn.execute(
