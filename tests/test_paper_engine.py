@@ -1,5 +1,6 @@
-"""Paper engine testleri — pozisyon yaşam döngüsü ve PnL."""
+"""Paper engine testleri — pozisyon yaşam döngüsü, PnL, funding."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -7,9 +8,20 @@ import pytest
 from bot.trading.paper_engine import PaperEngine
 
 
+def dt(iso: str) -> datetime:
+    return datetime.fromisoformat(iso).replace(tzinfo=timezone.utc)
+
+
 @pytest.fixture()
 def engine(tmp_path: Path) -> PaperEngine:
     return PaperEngine(tmp_path / "test.db", initial_capital=1000.0)
+
+
+def _backdate_opened_at(engine: PaperEngine, pos_id: int, iso: str) -> None:
+    """Pozisyon açılışını geçmişe çek — slot geçişini simüle et."""
+    engine._conn.execute(
+        "UPDATE paper_positions SET opened_at=? WHERE id=?", (iso, pos_id))
+    engine._conn.commit()
 
 
 def test_open_and_close_pnl_long(engine):
@@ -45,17 +57,23 @@ def test_equity_moves_with_market(engine):
 def test_funding_payment_long_negative_rate(engine):
     pos_id = engine.open_position("SOLUSDT", "LONG", "funding", 100.0, price=100.0,
                                   funding_rate=-0.0001)
-    paid = engine.process_funding_payments({"SOLUSDT": -0.0001})
+    # 12:08'de açıldı → 16:00 slotu geçti
+    _backdate_opened_at(engine, pos_id, "2026-07-01T12:08:00+00:00")
+    paid = engine.process_funding_payments(
+        {"SOLUSDT": -0.0001}, now=dt("2026-07-01T16:00:30+00:00"))
     assert paid >= 1
-    assert engine.funding_collected(pos_id) > 0
+    # LONG negatif funding'de ödeme ALIR: -rate × size = +$0.01
+    assert engine.funding_collected(pos_id) == pytest.approx(0.01, abs=1e-6)
 
 
 def test_funding_payment_short_positive_rate(engine):
     pos_id = engine.open_position("SOLUSDT", "SHORT", "funding", 100.0, price=100.0,
                                   funding_rate=0.0001)
-    paid = engine.process_funding_payments({"SOLUSDT": 0.0001})
+    _backdate_opened_at(engine, pos_id, "2026-07-01T12:08:00+00:00")
+    paid = engine.process_funding_payments(
+        {"SOLUSDT": 0.0001}, now=dt("2026-07-01T16:00:30+00:00"))
     assert paid >= 1
-    assert engine.funding_collected(pos_id) > 0
+    assert engine.funding_collected(pos_id) == pytest.approx(0.01, abs=1e-6)
 
 
 def test_technical_positions_get_no_funding(engine):

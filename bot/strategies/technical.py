@@ -1,8 +1,7 @@
 """Teknik indikatör stratejisi — EMA cross + RSI + MACD.
 
 Üçlü onay: EMA yönü, RSI aşırı alım/satım filtresi ve MACD momentum
-çizgisi aynı yöndeyse sinyal üretilir. Hepsi saf numpy ile public
-mum verisi üzerinde hesaplanır.
+çizgisi aynı yöndeyse sinyal üretilir.
 """
 
 import logging
@@ -27,7 +26,7 @@ def ema(values: np.ndarray, period: int) -> np.ndarray:
 
 
 def rsi(values: np.ndarray, period: int = 14) -> float:
-    """Wilder RSI — son değer."""
+    """Wilder RSI — son değer. Düz seride nötr (50) döner."""
     if len(values) < period + 1:
         return 50.0
     deltas = np.diff(values[-(period + 1):])
@@ -35,6 +34,8 @@ def rsi(values: np.ndarray, period: int = 14) -> float:
     losses = np.where(deltas < 0, -deltas, 0.0)
     avg_gain = float(np.mean(gains))
     avg_loss = float(np.mean(losses))
+    if avg_gain == 0 and avg_loss == 0:
+        return 50.0
     if avg_loss == 0:
         return 100.0
     rs = avg_gain / avg_loss
@@ -42,7 +43,6 @@ def rsi(values: np.ndarray, period: int = 14) -> float:
 
 
 def macd(values: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9):
-    """(macd_line, signal_line) — son bardaki değerler."""
     if len(values) < slow + signal:
         return 0.0, 0.0
     ema_fast = ema(values, fast)

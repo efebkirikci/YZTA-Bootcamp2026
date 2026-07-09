@@ -1,6 +1,7 @@
 """İndikatör ve strateji sinyal testleri."""
 
 import numpy as np
+import pytest
 
 from bot.strategies.technical import ema, macd, rsi
 from bot.strategies.funding_rate import FundingRateStrategy
@@ -30,13 +31,15 @@ def test_rsi_neutral():
 
 
 def test_macd_uptrend():
-    values = np.linspace(100.0, 300.0, 80)
+    # üstel büyüme → MACD çizgisi sinyalin üstünde
+    values = 100.0 * (1.015 ** np.arange(80))
     line, sig = macd(values)
     assert line > sig
 
 
 def test_macd_downtrend():
-    values = np.linspace(300.0, 100.0, 80)
+    # hızlanan düşüş → MACD çizgisi sinyalin altında
+    values = 300.0 - 3.0 * (1.015 ** np.arange(80))
     line, sig = macd(values)
     assert line < sig
 
@@ -57,22 +60,25 @@ class _Market:
         self.symbols = symbols
 
 
+@pytest.mark.asyncio
 async def test_funding_negative_gives_long():
     strat = FundingRateStrategy(_FakeSettings())
-    market = _Market({"BTCUSDT": -0.0002}, {"BTCUSDT": 60000.0}, ["BTCUSDT"])
+    market = _Market({"BTCUSDT": -0.02}, {"BTCUSDT": 60000.0}, ["BTCUSDT"])
     signals = await strat.scan(market)
     assert len(signals) == 1
     assert signals[0].side == "LONG"
 
 
+@pytest.mark.asyncio
 async def test_funding_positive_gives_short():
     strat = FundingRateStrategy(_FakeSettings())
-    market = _Market({"BTCUSDT": 0.0002}, {"BTCUSDT": 60000.0}, ["BTCUSDT"])
+    market = _Market({"BTCUSDT": 0.02}, {"BTCUSDT": 60000.0}, ["BTCUSDT"])
     signals = await strat.scan(market)
     assert len(signals) == 1
     assert signals[0].side == "SHORT"
 
 
+@pytest.mark.asyncio
 async def test_funding_below_threshold_no_signal():
     strat = FundingRateStrategy(_FakeSettings())
     market = _Market({"BTCUSDT": 0.00005}, {"BTCUSDT": 60000.0}, ["BTCUSDT"])
