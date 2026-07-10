@@ -1,7 +1,4 @@
-"""Binance public API client (v1) — read-only market data.
-
-Sadece public endpoint'ler: fiyat ve funding rate. API anahtarı gerekmez.
-"""
+"""Binance public API client — REST, API anahtari gerekmez."""
 
 import httpx
 
@@ -24,8 +21,18 @@ class BinanceClient:
         r.raise_for_status()
         return {item["symbol"]: float(item["price"]) for item in r.json()}
 
+    async def get_klines(self, symbol: str, interval: str = "1h", limit: int = 200) -> list[dict]:
+        r = await self._client.get(
+            f"{SPOT_BASE}/api/v3/klines",
+            params={"symbol": symbol, "interval": interval, "limit": limit})
+        r.raise_for_status()
+        return [
+            {"open_time": int(k[0]), "open": float(k[1]), "high": float(k[2]),
+             "low": float(k[3]), "close": float(k[4]), "volume": float(k[5])}
+            for k in r.json()
+        ]
+
     async def get_funding_rates(self) -> dict[str, float]:
-        """Tüm USDT perpetual'ların anlık funding rate'i."""
         r = await self._client.get(f"{FUTURES_BASE}/fapi/v1/premiumIndex")
         r.raise_for_status()
         out = {}

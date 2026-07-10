@@ -1,7 +1,8 @@
-"""CopyTrader orchestrator v1 — market feed + scan döngüsü.
+"""CopyTrader orchestrator — market feed + sinyal kopyalama.
 
 Tek asyncio process: market verisini tazele, stratejilerden sinyal topla,
-risk kontrolünden geçir, pozisyonları kopyala.
+risk kontrolunden gecir, pozisyonlari kopyala. Ayarlar runtime'da
+DB'den okunuyor (dashboard hazir olunca canli degisebilecek).
 """
 
 import asyncio
@@ -26,8 +27,6 @@ logger = logging.getLogger("orchestrator")
 
 
 class MarketSnapshot:
-    """Public market verisinin anlık görüntüsü — market loop tazeler."""
-
     def __init__(self):
         self.symbols: list[str] = []
         self.prices: dict[str, float] = {}
@@ -39,13 +38,15 @@ class MarketSnapshot:
 
 class CopyTraderApp:
     def __init__(self):
+        config.init_db()
+        self.settings = config.SettingsStore()
         self.market = MarketSnapshot()
         self.binance = BinanceClient()
-        self.engine = PaperEngine(BASE_DIR / "data" / "copytrader.db")
-        self.risk = RiskManager()
+        self.engine = PaperEngine(config.DB_PATH)
+        self.risk = RiskManager(self.settings)
         self.strategies = {
-            "funding": FundingRateStrategy(None),
-            "technical": TechnicalStrategy(None),
+            "funding": FundingRateStrategy(self.settings),
+            "technical": TechnicalStrategy(self.settings),
         }
         self.state = {
             "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -56,16 +57,23 @@ class CopyTraderApp:
     async def market_loop(self) -> None:
         while True:
             try:
-                self.market.symbols = config.SYMBOLS
+                self.market.symbols = self.settings.symbols()
                 prices = await self.binance.get_all_prices()
-                self.market.prices = {k: v for k, v in prices.items() if k in config.SYMBOLS}
+                self.market.prices = {k: v for k, v in prices.items() if k in self.market.symbols}
                 self.market.funding_rates = await self.binance.get_funding_rates()
                 self.market.api_ok = True
                 self.market.last_update = datetime.now(timezone.utc).isoformat()
             except Exception as e:
                 self.market.api_ok = False
-                logger.error("Market güncelleme hatası: %s", e)
-            await asyncio.sleep(5)
+                logger.error("Market guncelleme hatasi: %s", e)
+            await asyncio.sleep(config.PRICE_REFRESH_SEC)
+
+    async def refresh_klines(self) -> None:
+        for symbol in self.market.symbols:
+            try:
+                self.market.klines[symbol] = await self.binance.get_klines(symbol, "1h", 120)
+            except Exception:
+                pass
 
     async def scan_loop(self) -> None:
         await asyncio.sleep(2)
@@ -73,15 +81,17 @@ class CopyTraderApp:
             self.state["scan_count"] += 1
             self.state["last_scan"] = datetime.now(timezone.utc).isoformat()
             try:
+                await self.refresh_klines()
                 await self.scan_once()
             except Exception as e:
-                logger.exception("Tarama hatası: %s", e)
-            await asyncio.sleep(config.SCAN_INTERVAL_SEC)
+                logger.exception("Tarama hatasi: %s", e)
+            await asyncio.sleep(int(self.settings.get_typed("scan_interval_sec") or 15))
 
     async def scan_once(self) -> None:
         signals = []
-        for strat in self.strategies.values():
-            signals.extend(await strat.scan(self.market))
+        for name, strat in self.strategies.items():
+            if self.settings.strategy_enabled(name):
+                signals.extend(await strat.scan(self.market))
 
         for s in signals:
             price = self.market.prices.get(s.symbol, s.price)
@@ -102,7 +112,7 @@ class CopyTraderApp:
             pos_id = self.engine.open_position(
                 s.symbol, s.side, s.strategy, size, price,
                 self.market.funding_rates.get(s.symbol, 0.0), s.reason)
-            logger.info("Açıldı #%s %s %s ($%.2f) @ %.4f", pos_id, s.symbol, s.side, size, price)
+            logger.info("Acildi #%s %s %s ($%.2f) @ %.4f", pos_id, s.symbol, s.side, size, price)
 
 
 async def main() -> None:
