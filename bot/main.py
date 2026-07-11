@@ -1,9 +1,4 @@
-"""CopyTrader orchestrator — market feed + sinyal kopyalama.
-
-Tek asyncio process: market verisini tazele, stratejilerden sinyal topla,
-risk kontrolunden gecir, pozisyonlari kopyala. Ayarlar runtime'da
-DB'den okunuyor (dashboard hazir olunca canli degisebilecek).
-"""
+"""CopyTrader orchestrator — market feed + sinyal kopyalama + funding dongusu."""
 
 import asyncio
 import logging
@@ -83,9 +78,20 @@ class CopyTraderApp:
             try:
                 await self.refresh_klines()
                 await self.scan_once()
+                self.engine.record_equity_point(self.engine.equity(self.market.prices))
             except Exception as e:
                 logger.exception("Tarama hatasi: %s", e)
             await asyncio.sleep(int(self.settings.get_typed("scan_interval_sec") or 15))
+
+    async def funding_loop(self) -> None:
+        while True:
+            await asyncio.sleep(60)
+            try:
+                paid = self.engine.process_funding_payments(self.market.funding_rates)
+                if paid:
+                    logger.info("%d funding odemesi islendi", paid)
+            except Exception as e:
+                logger.error("Funding isleme hatasi: %s", e)
 
     async def scan_once(self) -> None:
         signals = []
@@ -103,7 +109,7 @@ class CopyTraderApp:
             ok, reason = self.risk.can_open(
                 equity=self.engine.equity(self.market.prices),
                 open_count=self.engine.position_count(),
-                today_loss=0.0,
+                today_loss=abs(self.engine.today_realized_pnl()),
                 size_usd=size,
             )
             if not ok:
@@ -122,7 +128,7 @@ async def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     app = CopyTraderApp()
-    await asyncio.gather(app.market_loop(), app.scan_loop())
+    await asyncio.gather(app.market_loop(), app.scan_loop(), app.funding_loop())
 
 
 if __name__ == "__main__":

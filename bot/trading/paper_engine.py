@@ -1,9 +1,4 @@
-"""Paper trading engine — SQLite tabanlı pozisyon simülasyonu.
-
-Funding ödemeleri Binance'in SABİT 8 saatlik slotlarına göre işlenir
-(00/08/16 UTC). Pozisyon açılış saatine göre değil, slot geçişine göre
-ödeme alınır: 12:08'de açılan pozisyon ilk ödemesini 16:00'da alır.
-"""
+"""Paper trading engine — SQLite pozisyon simülasyonu + funding slotlari."""
 
 import logging
 import sqlite3
@@ -16,7 +11,7 @@ INITIAL_CAPITAL = 1000.0
 
 
 def funding_slots_between(start: datetime, end: datetime) -> list[datetime]:
-    """(start, end] aralığında geçilen sabit 8 saatlik UTC slotları."""
+    """(start, end] araliginda gecilen sabit 8 saatlik UTC slotlari."""
     slots: list[datetime] = []
     cursor = start
     for _ in range(16):
@@ -78,6 +73,11 @@ class PaperEngine:
                 rate REAL NOT NULL,
                 amount_usd REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS equity_curve (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT DEFAULT (datetime('now')),
+                equity REAL NOT NULL
+            );
             """
         )
         self._conn.execute(
@@ -86,7 +86,6 @@ class PaperEngine:
         )
         self._conn.commit()
 
-    # (önceki sürümdeki metodlar aynen korunur)
     def initial_capital(self) -> float:
         row = self._conn.execute(
             "SELECT value FROM paper_meta WHERE key='initial_capital'").fetchone()
@@ -96,6 +95,12 @@ class PaperEngine:
         row = self._conn.execute(
             "SELECT COALESCE(SUM(realized_pnl),0) FROM paper_positions "
             "WHERE status='closed'").fetchone()
+        return float(row[0])
+
+    def today_realized_pnl(self) -> float:
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(realized_pnl),0) FROM paper_positions "
+            "WHERE status='closed' AND date(closed_at)=date('now')").fetchone()
         return float(row[0])
 
     def unrealized_pnl(self, prices: dict[str, float]) -> float:
@@ -142,7 +147,7 @@ class PaperEngine:
         p = self._conn.execute(
             "SELECT * FROM paper_positions WHERE id=?", (position_id,)).fetchone()
         if p is None or p["status"] == "closed":
-            return {"ok": False, "error": "pozisyon yok / zaten kapalı"}
+            return {"ok": False, "error": "pozisyon yok / zaten kapali"}
         pnl = self._pnl_for(p, price)
         self._conn.execute(
             "UPDATE paper_positions SET status='closed', close_price=?, realized_pnl=?, "
@@ -165,7 +170,6 @@ class PaperEngine:
 
     def process_funding_payments(self, rates: dict[str, float],
                                  now: datetime | None = None) -> int:
-        """Açık pozisyonlar için geçilen her slotta ödeme işle."""
         now = now or datetime.now(timezone.utc)
         paid = 0
         for p in self.open_positions():
@@ -180,9 +184,9 @@ class PaperEngine:
             start = datetime.fromisoformat(last["slot_time"]) if last else                 datetime.fromisoformat(p["opened_at"])
             for slot in funding_slots_between(start, now):
                 if p["side"] == "LONG":
-                    amount = -rate * p["size_usd"]   # negatif funding → long ödeme alır
+                    amount = -rate * p["size_usd"]
                 else:
-                    amount = rate * p["size_usd"]    # pozitif funding → short ödeme alır
+                    amount = rate * p["size_usd"]
                 self._conn.execute(
                     "INSERT INTO paper_payments (position_id, slot_time, rate, amount_usd) "
                     "VALUES (?,?,?,?)",
@@ -197,6 +201,21 @@ class PaperEngine:
             "SELECT COALESCE(SUM(amount_usd),0) FROM paper_payments WHERE position_id=?",
             (position_id,)).fetchone()
         return float(row[0])
+
+    def total_funding_collected(self) -> float:
+        row = self._conn.execute(
+            "SELECT COALESCE(SUM(amount_usd),0) FROM paper_payments").fetchone()
+        return float(row[0])
+
+    def record_equity_point(self, equity: float) -> None:
+        self._conn.execute(
+            "INSERT INTO equity_curve (equity) VALUES (?)", (equity,))
+        self._conn.commit()
+
+    def equity_curve(self, limit: int = 500) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT ts, equity FROM equity_curve ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in reversed(rows)]
 
     def recent_trades(self, limit: int = 20) -> list[dict]:
         rows = self._conn.execute(
