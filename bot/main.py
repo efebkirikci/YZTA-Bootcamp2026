@@ -1,4 +1,4 @@
-"""CopyTrader orchestrator — market feed + sinyal kopyalama + funding dongusu."""
+"""CopyTrader orchestrator — market feed + sinyal kopyalama + dashboard."""
 
 import asyncio
 import logging
@@ -6,10 +6,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import uvicorn
 from dotenv import load_dotenv
 
 from . import config
 from .api.binance_client import BinanceClient
+from .dashboard.server import create_dashboard
 from .strategies.funding_rate import FundingRateStrategy
 from .strategies.technical import TechnicalStrategy
 from .trading.paper_engine import PaperEngine
@@ -47,6 +49,7 @@ class CopyTraderApp:
             "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "scan_count": 0,
             "last_scan": "",
+            "last_error": "",
         }
 
     async def market_loop(self) -> None:
@@ -60,6 +63,7 @@ class CopyTraderApp:
                 self.market.last_update = datetime.now(timezone.utc).isoformat()
             except Exception as e:
                 self.market.api_ok = False
+                self.state["last_error"] = f"market: {e}"
                 logger.error("Market guncelleme hatasi: %s", e)
             await asyncio.sleep(config.PRICE_REFRESH_SEC)
 
@@ -80,6 +84,7 @@ class CopyTraderApp:
                 await self.scan_once()
                 self.engine.record_equity_point(self.engine.equity(self.market.prices))
             except Exception as e:
+                self.state["last_error"] = f"scan: {e}"
                 logger.exception("Tarama hatasi: %s", e)
             await asyncio.sleep(int(self.settings.get_typed("scan_interval_sec") or 15))
 
@@ -120,6 +125,38 @@ class CopyTraderApp:
                 self.market.funding_rates.get(s.symbol, 0.0), s.reason)
             logger.info("Acildi #%s %s %s ($%.2f) @ %.4f", pos_id, s.symbol, s.side, size, price)
 
+    # ── dashboard verisi ──────────────────────────────────────────────
+    def dashboard_state(self) -> dict:
+        prices = self.market.prices
+        equity = self.engine.equity(prices)
+        return {
+            "meta": {
+                "started_at": self.state["started_at"],
+                "mode": config.TRADING_MODE,
+                "scan_count": self.state["scan_count"],
+                "last_scan": self.state["last_scan"],
+                "last_error": self.state["last_error"],
+                "api_ok": self.market.api_ok,
+                "last_update": self.market.last_update,
+            },
+            "portfolio": {
+                "initial_capital": self.engine.initial_capital(),
+                "equity": round(equity, 2),
+                "realized_pnl": round(self.engine.realized_pnl(), 2),
+                "unrealized_pnl": round(self.engine.unrealized_pnl(prices), 2),
+                "open_positions": self.engine.position_count(),
+            },
+            "market": {
+                "rows": [
+                    {"symbol": s, "price": prices.get(s),
+                     "funding_rate": self.market.funding_rates.get(s)}
+                    for s in self.market.symbols
+                ],
+                "last_update": self.market.last_update,
+                "api_ok": self.market.api_ok,
+            },
+        }
+
 
 async def main() -> None:
     logging.basicConfig(
@@ -128,7 +165,17 @@ async def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     app = CopyTraderApp()
-    await asyncio.gather(app.market_loop(), app.scan_loop(), app.funding_loop())
+    dashboard = create_dashboard(app)
+
+    async def _serve() -> None:
+        cfg = uvicorn.Config(dashboard, host=config.HOST, port=config.PORT, log_level="warning")
+        server = uvicorn.Server(cfg)
+        await server.serve()
+
+    try:
+        await asyncio.gather(app.market_loop(), app.scan_loop(), app.funding_loop(), _serve())
+    finally:
+        await app.binance.close()
 
 
 if __name__ == "__main__":

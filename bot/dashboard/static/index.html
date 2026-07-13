@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CopyTrader — Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◈</span>
+    <div>
+      <h1>CopyTrader</h1>
+      <span class="sub">YZTA Bootcamp 2026 · Takim 36</span>
+    </div>
+  </div>
+  <div class="badges">
+    <span id="badge-mode" class="badge">paper</span>
+    <span id="badge-api" class="badge badge-warn">API bekleniyor…</span>
+  </div>
+</header>
+<main>
+  <section class="stats">
+    <div class="stat"><label>Ozsermaye</label><div class="val" id="stat-equity">—</div></div>
+    <div class="stat"><label>Gerceklesen PnL</label><div class="val" id="stat-realized">—</div></div>
+    <div class="stat"><label>Gerceklesmemis PnL</label><div class="val" id="stat-unrealized">—</div></div>
+    <div class="stat"><label>Acik Pozisyon</label><div class="val" id="stat-open">0</div></div>
+  </section>
+  <section class="card">
+    <h2>Canli Piyasa</h2>
+    <table class="tbl">
+      <thead><tr><th>Sembol</th><th>Fiyat</th><th>Funding</th></tr></thead>
+      <tbody id="market-body"><tr><td colspan="3" class="muted">Veri bekleniyor…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+<footer>CopyTrader · veriler Binance public API'den alinir</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
