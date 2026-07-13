@@ -29,6 +29,7 @@ class MarketSnapshot:
         self.prices: dict[str, float] = {}
         self.funding_rates: dict[str, float] = {}
         self.klines: dict[str, list] = {}
+        self.tickers: dict[str, dict] = {}
         self.last_update: str = ""
         self.api_ok: bool = False
 
@@ -50,7 +51,16 @@ class CopyTraderApp:
             "scan_count": 0,
             "last_scan": "",
             "last_error": "",
+            "latest_signals": [],
+            "events": [],
         }
+
+    def push_event(self, kind: str, text: str, **extra) -> None:
+        ev = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "kind": kind, "text": text, **extra}
+        self.state["events"].append(ev)
+        self.state["events"] = self.state["events"][-100:]
+        logger.info("[%s] %s", kind, text)
 
     async def market_loop(self) -> None:
         while True:
@@ -94,9 +104,15 @@ class CopyTraderApp:
             try:
                 paid = self.engine.process_funding_payments(self.market.funding_rates)
                 if paid:
-                    logger.info("%d funding odemesi islendi", paid)
+                    self.push_event("funding", f"{paid} funding odemesi islendi")
             except Exception as e:
                 logger.error("Funding isleme hatasi: %s", e)
+
+    def _record_signal(self, s) -> None:
+        self.engine._conn.execute(
+            "INSERT INTO signals (symbol, side, strategy, price, reason) VALUES (?,?,?,?,?)",
+            (s.symbol, s.side, s.strategy, s.price, s.reason))
+        self.engine._conn.commit()
 
     async def scan_once(self) -> None:
         signals = []
@@ -105,6 +121,7 @@ class CopyTraderApp:
                 signals.extend(await strat.scan(self.market))
 
         for s in signals:
+            self._record_signal(s)
             price = self.market.prices.get(s.symbol, s.price)
             if not price:
                 continue
@@ -118,17 +135,35 @@ class CopyTraderApp:
                 size_usd=size,
             )
             if not ok:
-                logger.info("Reddedildi %s %s: %s", s.symbol, s.side, reason)
+                self.push_event("reject", f"{s.symbol} {s.side}: {reason}")
                 continue
             pos_id = self.engine.open_position(
                 s.symbol, s.side, s.strategy, size, price,
                 self.market.funding_rates.get(s.symbol, 0.0), s.reason)
-            logger.info("Acildi #%s %s %s ($%.2f) @ %.4f", pos_id, s.symbol, s.side, size, price)
+            self.push_event("open", f"{s.symbol} {s.side} acildi (${size:.2f}, {s.strategy}) @ {price:.4f}")
+            self.engine._conn.execute(
+                "UPDATE signals SET executed=1 WHERE symbol=? AND side=? AND strategy=? AND executed=0",
+                (s.symbol, s.side, s.strategy))
+            self.engine._conn.commit()
+
+        self.state["latest_signals"] = [
+            {"symbol": s.symbol, "side": s.side, "strategy": s.strategy,
+             "reason": s.reason, "confidence": s.confidence, "price": s.price,
+             "created_at": s.created_at}
+            for s in signals[-15:]
+        ]
 
     # ── dashboard verisi ──────────────────────────────────────────────
     def dashboard_state(self) -> dict:
         prices = self.market.prices
         equity = self.engine.equity(prices)
+        open_positions = [
+            {**dict(p),
+             "unrealized_pnl": round(
+                 self.engine._pnl_for(p, prices.get(p["symbol"], p["entry_price"])), 2),
+             "funding_collected": round(self.engine.funding_collected(p["id"]), 4)}
+            for p in self.engine.open_positions()
+        ]
         return {
             "meta": {
                 "started_at": self.state["started_at"],
@@ -144,7 +179,9 @@ class CopyTraderApp:
                 "equity": round(equity, 2),
                 "realized_pnl": round(self.engine.realized_pnl(), 2),
                 "unrealized_pnl": round(self.engine.unrealized_pnl(prices), 2),
+                "total_funding_collected": round(self.engine.total_funding_collected(), 4),
                 "open_positions": self.engine.position_count(),
+                "today_pnl": round(self.engine.today_realized_pnl(), 2),
             },
             "market": {
                 "rows": [
@@ -155,6 +192,11 @@ class CopyTraderApp:
                 "last_update": self.market.last_update,
                 "api_ok": self.market.api_ok,
             },
+            "positions": open_positions,
+            "latest_signals": self.state["latest_signals"],
+            "events": self.state["events"][-30:],
+            "equity_curve": self.engine.equity_curve(300),
+            "settings": self.settings.all(),
         }
 
 

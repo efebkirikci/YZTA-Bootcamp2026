@@ -1,9 +1,4 @@
-"""Central configuration — env default'lari + SQLite runtime ayarlari.
-
-Runtime ayarlar (strateji, risk limitleri, semboller) DB'de tutulur;
-dashboard bunlari botu durdurmadan degistirebilir. .env yalnizca ilk
-calistirmadaki bootstrap degerlerini saglar.
-"""
+"""Central configuration — env default'lari + SQLite runtime ayarlari."""
 
 from __future__ import annotations
 
@@ -30,7 +25,6 @@ DEFAULT_SYMBOLS = [s.strip() for s in os.getenv(
 
 TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
 
-# runtime ayar semasi: key -> (default, aciklama, tip)
 RUNTIME_SETTINGS: dict[str, tuple] = {
     "active_strategy": ("both", "Strateji: funding | technical | both", "str"),
     "symbols": (",".join(DEFAULT_SYMBOLS), "Izlenecek semboller (virgullu)", "str"),
@@ -60,6 +54,16 @@ def init_db() -> None:
             value TEXT NOT NULL,
             description TEXT DEFAULT '',
             updated_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS signals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now')),
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            strategy TEXT NOT NULL,
+            price REAL,
+            reason TEXT DEFAULT '',
+            executed INTEGER DEFAULT 0
         );
         """
     )
