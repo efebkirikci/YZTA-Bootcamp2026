@@ -1,11 +1,12 @@
-"""FastAPI dashboard — localhost UI + JSON API."""
+"""FastAPI dashboard — localhost UI + JSON API + WebSocket."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,6 +25,16 @@ def create_dashboard(engine) -> FastAPI:
     @app.get("/api/state")
     async def api_state():
         return engine.dashboard_state()
+
+    @app.websocket("/ws")
+    async def ws_feed(ws: WebSocket):
+        await ws.accept()
+        try:
+            while True:
+                await ws.send_json(engine.dashboard_state())
+                await asyncio.sleep(2)
+        except (WebSocketDisconnect, RuntimeError):
+            pass
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     return app
