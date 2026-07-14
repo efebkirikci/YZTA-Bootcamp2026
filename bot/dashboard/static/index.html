@@ -3,8 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CopyTrader — Dashboard</title>
+<title>CopyTrader — Canli Dashboard</title>
 <link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -12,7 +13,7 @@
     <span class="logo">◈</span>
     <div>
       <h1>CopyTrader</h1>
-      <span class="sub">YZTA Bootcamp 2026 · Takim 36</span>
+      <span class="sub">YZTA Bootcamp 2026 · Takim 36 · Binance Public API</span>
     </div>
   </div>
   <div class="badges">
@@ -26,13 +27,61 @@
     <div class="stat"><label>Gerceklesen PnL</label><div class="val" id="stat-realized">—</div></div>
     <div class="stat"><label>Gerceklesmemis PnL</label><div class="val" id="stat-unrealized">—</div></div>
     <div class="stat"><label>Acik Pozisyon</label><div class="val" id="stat-open">0</div></div>
+    <div class="stat"><label>Funding Toplam</label><div class="val" id="stat-funding">—</div></div>
+    <div class="stat"><label>Tarama</label><div class="val" id="stat-scans">0</div></div>
+  </section>
+  <section class="grid-2">
+    <div class="card">
+      <h2>Ozsermaye Egrisi</h2>
+      <canvas id="equity-chart" height="220"></canvas>
+    </div>
+    <div class="card">
+      <h2>Canli Piyasa <span class="hint" id="market-updated"></span></h2>
+      <table class="tbl">
+        <thead><tr><th>Sembol</th><th>Fiyat</th><th>Funding</th></tr></thead>
+        <tbody id="market-body"><tr><td colspan="3" class="muted">Veri bekleniyor…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+  <section class="grid-2">
+    <div class="card">
+      <h2>Acil Pozisyonlar <span class="hint">(copy)</span></h2>
+      <table class="tbl">
+        <thead><tr><th>Sembol</th><th>Yon</th><th>Strateji</th><th>Boyut</th><th>Giris</th><th>PnL</th><th>Funding</th></tr></thead>
+        <tbody id="positions-body"><tr><td colspan="7" class="muted">Pozisyon yok</td></tr></tbody>
+      </table>
+      <h2 style="margin-top:18px">Son Sinyaller</h2>
+      <div id="signals-list" class="signals"><div class="muted">Sinyal bekleniyor…</div></div>
+    </div>
+    <div class="card">
+      <h2>Ayarlar <span class="hint">(canli uygulanir)</span></h2>
+      <form id="settings-form" class="settings-form">
+        <label>Strateji
+          <select id="set-active_strategy">
+            <option value="funding">Funding Rate</option>
+            <option value="technical">Teknik (EMA+RSI+MACD)</option>
+            <option value="both">Ikisi Birden</option>
+          </select>
+        </label>
+        <label>Semboller (virgulle)
+          <input id="set-symbols" type="text">
+        </label>
+        <div class="row2">
+          <label>Max Pozisyon ($)
+            <input id="set-max_position_size_usd" type="number" step="1">
+          </label>
+          <label>Max Acik Poz.
+            <input id="set-max_open_positions" type="number" min="1">
+          </label>
+        </div>
+        <button type="submit" class="btn">Ayarlari Kaydet</button>
+        <span id="settings-saved" class="saved"></span>
+      </form>
+    </div>
   </section>
   <section class="card">
-    <h2>Canli Piyasa</h2>
-    <table class="tbl">
-      <thead><tr><th>Sembol</th><th>Fiyat</th><th>Funding</th></tr></thead>
-      <tbody id="market-body"><tr><td colspan="3" class="muted">Veri bekleniyor…</td></tr></tbody>
-    </table>
+    <h2>Olay Akisi <span class="hint">(canli)</span></h2>
+    <div id="events" class="events"><div class="muted">—</div></div>
   </section>
 </main>
 <footer>CopyTrader · veriler Binance public API'den alinir</footer>
