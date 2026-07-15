@@ -1,4 +1,4 @@
-/* CopyTrader dashboard client — WebSocket canli akis + polling fallback. */
+/* CopyTrader dashboard client — WebSocket + ayar yonetimi. */
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -82,6 +82,40 @@
     }
   }
 
+  function fillSettings(settings) {
+    const map = {
+      active_strategy: $("set-active_strategy"),
+      symbols: $("set-symbols"),
+      max_position_size_usd: $("set-max_position_size_usd"),
+      max_open_positions: $("set-max_open_positions"),
+    };
+    for (const [key, el] of Object.entries(map)) {
+      if (settings[key]) el.value = settings[key].value;
+    }
+  }
+
+  $("settings-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const map = {
+      active_strategy: $("set-active_strategy").value,
+      symbols: $("set-symbols").value,
+      max_position_size_usd: $("set-max_position_size_usd").value,
+      max_open_positions: $("set-max_open_positions").value,
+    };
+    let ok = 0;
+    for (const [key, value] of Object.entries(map)) {
+      const r = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, value }),
+      });
+      if (r.ok) ok++;
+    }
+    const el = $("settings-saved");
+    el.textContent = ok + " ayar kaydedildi ✓";
+    setTimeout(() => (el.textContent = ""), 2500);
+  });
+
   function connectWS() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -91,10 +125,19 @@
   }
 
   async function poll() {
-    try { render(await (await fetch("/api/state")).json()); } catch (_) {}
+    try {
+      const r = await fetch("/api/state");
+      const s = await r.json();
+      render(s);
+      fillSettings(s.settings);
+    } catch (_) {}
     setTimeout(poll, 3000);
   }
 
+  fetch("/api/state").then(r => r.json()).then(s => {
+    fillSettings(s.settings);
+    render(s);
+  }).catch(() => {});
   if (window.WebSocket) connectWS();
   poll();
 })();
