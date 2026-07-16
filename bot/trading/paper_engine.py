@@ -1,4 +1,9 @@
-"""Paper trading engine — SQLite pozisyon simülasyonu + funding slotlari."""
+"""Paper trading engine — SQLite pozisyon simülasyonu + funding slotlari.
+
+Pozisyonlar stop-loss / take-profit seviyeleriyle acilir; her taramada
+check_exits() bu seviyeleri kontrol eder. Funding odemeleri Binance'in
+sabit 8 saatlik slotlarina (00/08/16 UTC) gore islenir.
+"""
 
 import logging
 import sqlite3
@@ -53,6 +58,8 @@ class PaperEngine:
                 closed_at TEXT,
                 close_price REAL,
                 realized_pnl REAL DEFAULT 0,
+                stop_loss_price REAL,
+                take_profit_price REAL,
                 reason TEXT DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS paper_trades (
@@ -131,10 +138,21 @@ class PaperEngine:
 
     def open_position(self, symbol: str, side: str, strategy: str, size_usd: float,
                       price: float, funding_rate: float = 0.0, reason: str = "") -> int:
+        sl_pct = float(self._conn.execute(
+            "SELECT value FROM settings WHERE key='stop_loss_pct'").fetchone()[0])
+        tp_pct = float(self._conn.execute(
+            "SELECT value FROM settings WHERE key='take_profit_pct'").fetchone()[0])
+        if side == "LONG":
+            sl = price * (1 - sl_pct / 100.0)
+            tp = price * (1 + tp_pct / 100.0)
+        else:
+            sl = price * (1 + sl_pct / 100.0)
+            tp = price * (1 - tp_pct / 100.0)
         cur = self._conn.execute(
             "INSERT INTO paper_positions (symbol, side, strategy, size_usd, entry_price, "
-            "entry_funding_rate, reason) VALUES (?,?,?,?,?,?,?)",
-            (symbol, side, strategy, size_usd, price, funding_rate, reason))
+            "entry_funding_rate, stop_loss_price, take_profit_price, reason) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (symbol, side, strategy, size_usd, price, funding_rate, sl, tp, reason))
         pos_id = cur.lastrowid
         self._conn.execute(
             "INSERT INTO paper_trades (position_id, symbol, side, size_usd, price, kind) "
@@ -167,6 +185,29 @@ class PaperEngine:
         else:
             ret = (p["entry_price"] - price) / p["entry_price"] if p["entry_price"] else 0
         return p["size_usd"] * ret
+
+    def check_exits(self, prices: dict[str, float]) -> list[dict]:
+        """Stop-loss / take-profit kontrolu — esigi asan pozisyonlari kapat."""
+        closed = []
+        for p in self.open_positions():
+            price = prices.get(p["symbol"])
+            if not price:
+                continue
+            if p["side"] == "LONG":
+                if p["stop_loss_price"] and price <= p["stop_loss_price"]:
+                    r = self.close_position(p["id"], price, "stop_loss")
+                    closed.append({"symbol": p["symbol"], "reason": "stop_loss", **r})
+                elif p["take_profit_price"] and price >= p["take_profit_price"]:
+                    r = self.close_position(p["id"], price, "take_profit")
+                    closed.append({"symbol": p["symbol"], "reason": "take_profit", **r})
+            else:
+                if p["stop_loss_price"] and price >= p["stop_loss_price"]:
+                    r = self.close_position(p["id"], price, "stop_loss")
+                    closed.append({"symbol": p["symbol"], "reason": "stop_loss", **r})
+                elif p["take_profit_price"] and price <= p["take_profit_price"]:
+                    r = self.close_position(p["id"], price, "take_profit")
+                    closed.append({"symbol": p["symbol"], "reason": "take_profit", **r})
+        return closed
 
     def process_funding_payments(self, rates: dict[str, float],
                                  now: datetime | None = None) -> int:

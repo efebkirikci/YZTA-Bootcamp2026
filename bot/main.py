@@ -92,6 +92,10 @@ class CopyTraderApp:
             try:
                 await self.refresh_klines()
                 await self.scan_once()
+                closed = self.engine.check_exits(self.market.prices)
+                for c in closed:
+                    self.push_event("close", f"{c.get('symbol')} kapatildi ({c.get('reason')})")
+                self.engine.process_funding_payments(self.market.funding_rates)
                 self.engine.record_equity_point(self.engine.equity(self.market.prices))
             except Exception as e:
                 self.state["last_error"] = f"scan: {e}"
@@ -197,6 +201,11 @@ class CopyTraderApp:
             "events": self.state["events"][-30:],
             "equity_curve": self.engine.equity_curve(300),
             "settings": self.settings.all(),
+            "active_strategy": self.settings.active_strategy(),
+            "strategies": {
+                "funding": {"label": "Funding Rate", "enabled": self.settings.strategy_enabled("funding")},
+                "technical": {"label": "Teknik (EMA+RSI+MACD)", "enabled": self.settings.strategy_enabled("technical")},
+            },
         }
 
 
