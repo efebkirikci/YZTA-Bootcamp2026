@@ -24,6 +24,8 @@ logger = logging.getLogger("orchestrator")
 
 
 class MarketSnapshot:
+    """Public market verisinin anlik goruntusu — market loop tazeler."""
+
     def __init__(self):
         self.symbols: list[str] = []
         self.prices: dict[str, float] = {}
@@ -32,6 +34,21 @@ class MarketSnapshot:
         self.tickers: dict[str, dict] = {}
         self.last_update: str = ""
         self.api_ok: bool = False
+
+    def to_dict(self, symbols: list[str]) -> dict:
+        rows = []
+        for s in symbols:
+            t = self.tickers.get(s, {})
+            rows.append({
+                "symbol": s,
+                "price": self.prices.get(s),
+                "change_pct": t.get("change_pct"),
+                "volume": t.get("volume"),
+                "high": t.get("high"),
+                "low": t.get("low"),
+                "funding_rate": self.funding_rates.get(s),
+            })
+        return {"rows": rows, "last_update": self.last_update, "api_ok": self.api_ok}
 
 
 class CopyTraderApp:
@@ -69,6 +86,7 @@ class CopyTraderApp:
                 prices = await self.binance.get_all_prices()
                 self.market.prices = {k: v for k, v in prices.items() if k in self.market.symbols}
                 self.market.funding_rates = await self.binance.get_funding_rates()
+                self.market.tickers = await self.binance.get_24h_tickers()
                 self.market.api_ok = True
                 self.market.last_update = datetime.now(timezone.utc).isoformat()
             except Exception as e:
@@ -187,15 +205,7 @@ class CopyTraderApp:
                 "open_positions": self.engine.position_count(),
                 "today_pnl": round(self.engine.today_realized_pnl(), 2),
             },
-            "market": {
-                "rows": [
-                    {"symbol": s, "price": prices.get(s),
-                     "funding_rate": self.market.funding_rates.get(s)}
-                    for s in self.market.symbols
-                ],
-                "last_update": self.market.last_update,
-                "api_ok": self.market.api_ok,
-            },
+            "market": self.market.to_dict(self.settings.symbols()),
             "positions": open_positions,
             "latest_signals": self.state["latest_signals"],
             "events": self.state["events"][-30:],

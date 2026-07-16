@@ -21,6 +21,20 @@ class BinanceClient:
         r.raise_for_status()
         return {item["symbol"]: float(item["price"]) for item in r.json()}
 
+    async def get_24h_tickers(self) -> dict[str, dict]:
+        r = await self._client.get(f"{SPOT_BASE}/api/v3/ticker/24hr")
+        r.raise_for_status()
+        out = {}
+        for item in r.json():
+            out[item["symbol"]] = {
+                "price": float(item["lastPrice"]),
+                "change_pct": float(item["priceChangePercent"]),
+                "volume": float(item["volume"]),
+                "high": float(item["highPrice"]),
+                "low": float(item["lowPrice"]),
+            }
+        return out
+
     async def get_klines(self, symbol: str, interval: str = "1h", limit: int = 200) -> list[dict]:
         r = await self._client.get(
             f"{SPOT_BASE}/api/v3/klines",
