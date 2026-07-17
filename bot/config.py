@@ -24,6 +24,7 @@ DEFAULT_SYMBOLS = [s.strip() for s in os.getenv(
 ).split(",") if s.strip()]
 
 TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
+AI_ENABLED = os.getenv("AI_ENABLED", "false").lower() == "true"
 
 RUNTIME_SETTINGS: dict[str, tuple] = {
     "active_strategy": ("both", "Strateji: funding | technical | both", "str"),
