@@ -1,4 +1,4 @@
-/* CopyTrader dashboard client — WebSocket + ayar yonetimi. */
+/* CopyTrader dashboard client — WebSocket canli akis + ayar yonetimi. */
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -10,11 +10,17 @@
 
   function render(s) {
     $("badge-mode").textContent = s.meta.mode;
-    $("badge-mode").className = "badge badge-" + s.meta.mode;
+    $("badge-mode").className = "badge " + (s.meta.mode === "live" ? "badge-live" : "badge-paper");
     $("badge-api").textContent = s.meta.api_ok ? "API canli" : "API baglanti hatasi";
     $("badge-api").className = "badge " + (s.meta.api_ok ? "badge-ok" : "badge-warn");
+    $("badge-ai").textContent = s.meta.ai_enabled ? "AI aktif" : "AI kapali";
+    $("badge-ai").className = "badge " + (s.meta.ai_enabled ? "badge-on" : "badge-off");
 
     $("stat-equity").textContent = fmtUsd(s.portfolio.equity);
+    const ed = $("stat-equity-delta");
+    const total = s.portfolio.realized_pnl + s.portfolio.unrealized_pnl;
+    ed.textContent = (total >= 0 ? "+" : "") + fmtUsd(total);
+    ed.className = "delta " + cls(total);
     $("stat-realized").textContent = fmtUsd(s.portfolio.realized_pnl);
     $("stat-realized").className = "val " + cls(s.portfolio.realized_pnl);
     $("stat-unrealized").textContent = fmtUsd(s.portfolio.unrealized_pnl);
@@ -24,23 +30,29 @@
     $("stat-scans").textContent = s.meta.scan_count;
 
     const mb = $("market-body");
-    if (s.market.rows.length) {
-      mb.innerHTML = s.market.rows.map(r =>
-        `<tr><td><b>${r.symbol}</b></td><td>${fmt(r.price, 4)}</td>` +
-        `<td>${r.funding_rate === null ? "—" : (r.funding_rate * 100).toFixed(4) + "%"}</td></tr>`
-      ).join("");
+    if (s.market.rows && s.market.rows.length) {
+      mb.innerHTML = s.market.rows.map(r => {
+        const chg = r.change_pct === null || r.change_pct === undefined ? null : Number(r.change_pct);
+        const fr = r.funding_rate === null || r.funding_rate === undefined ? null : Number(r.funding_rate) * 100;
+        const vol = r.volume ? (Number(r.volume) / 1e6).toFixed(1) + "M" : "—";
+        return `<tr><td><b>${r.symbol}</b></td><td>${fmt(r.price, 4)}</td>` +
+          `<td class="${cls(chg)}">${chg === null ? "—" : (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%"}</td>` +
+          `<td class="${cls(fr)}">${fr === null ? "—" : fr.toFixed(4) + "%"}</td><td>${vol}</td></tr>`;
+      }).join("");
       $("market-updated").textContent = "· " + (s.market.last_update || "").replace("T", " ").slice(0, 19) + " UTC";
     }
 
     const pb = $("positions-body");
     if (s.positions.length) {
-      pb.innerHTML = s.positions.map(p =>
-        `<tr><td><b>${p.symbol}</b></td><td class="side-${p.side.toLowerCase()}">${p.side}</td>` +
-        `<td>${p.strategy}</td><td>$${fmt(p.size_usd)}</td><td>${fmt(p.entry_price, 4)}</td>` +
-        `<td class="${cls(p.unrealized_pnl)}">${fmtUsd(p.unrealized_pnl)}</td>` +
-        `<td>${fmtUsd(p.funding_collected || 0)}</td></tr>`).join("");
+      pb.innerHTML = s.positions.map(p => {
+        const pnl = Number(p.unrealized_pnl || 0);
+        return `<tr><td><b>${p.symbol}</b></td><td class="side-${p.side.toLowerCase()}">${p.side}</td>` +
+          `<td>${p.strategy}</td><td>$${fmt(p.size_usd)}</td><td>${fmt(p.entry_price, 4)}</td>` +
+          `<td class="${cls(pnl)}">${fmtUsd(pnl)}</td><td>${fmtUsd(p.funding_collected || 0)}</td>` +
+          `<td><button class="btn btn-ghost" onclick="window.closePos(${p.id})">Kapat</button></td></tr>`;
+      }).join("");
     } else {
-      pb.innerHTML = '<tr><td colspan="7" class="muted">Pozisyon yok</td></tr>';
+      pb.innerHTML = '<tr><td colspan="8" class="muted">Pozisyon yok</td></tr>';
     }
 
     const sl = $("signals-list");
@@ -48,7 +60,8 @@
       sl.innerHTML = s.latest_signals.slice().reverse().map(sg =>
         `<div class="signal"><span class="sym">${sg.symbol}</span>` +
         `<span class="side-${sg.side.toLowerCase()}">${sg.side}</span>` +
-        `<span class="rsn">${sg.reason}</span></div>`).join("");
+        `<span class="rsn">${sg.reason}</span>` +
+        `<span class="muted">${(sg.confidence * 100).toFixed(0)}%</span></div>`).join("");
     } else {
       sl.innerHTML = '<div class="muted">Sinyal bekleniyor…</div>';
     }
@@ -86,8 +99,14 @@
     const map = {
       active_strategy: $("set-active_strategy"),
       symbols: $("set-symbols"),
+      funding_rate_threshold: $("set-funding_rate_threshold"),
+      scan_interval_sec: $("set-scan_interval_sec"),
       max_position_size_usd: $("set-max_position_size_usd"),
       max_open_positions: $("set-max_open_positions"),
+      stop_loss_pct: $("set-stop_loss_pct"),
+      take_profit_pct: $("set-take_profit_pct"),
+      max_portfolio_risk_pct: $("set-max_portfolio_risk_pct"),
+      max_daily_loss_usd: $("set-max_daily_loss_usd"),
     };
     for (const [key, el] of Object.entries(map)) {
       if (settings[key]) el.value = settings[key].value;
@@ -99,8 +118,14 @@
     const map = {
       active_strategy: $("set-active_strategy").value,
       symbols: $("set-symbols").value,
+      funding_rate_threshold: $("set-funding_rate_threshold").value,
+      scan_interval_sec: $("set-scan_interval_sec").value,
       max_position_size_usd: $("set-max_position_size_usd").value,
       max_open_positions: $("set-max_open_positions").value,
+      stop_loss_pct: $("set-stop_loss_pct").value,
+      take_profit_pct: $("set-take_profit_pct").value,
+      max_portfolio_risk_pct: $("set-max_portfolio_risk_pct").value,
+      max_daily_loss_usd: $("set-max_daily_loss_usd").value,
     };
     let ok = 0;
     for (const [key, value] of Object.entries(map)) {
@@ -115,6 +140,13 @@
     el.textContent = ok + " ayar kaydedildi ✓";
     setTimeout(() => (el.textContent = ""), 2500);
   });
+
+  window.closePos = async (id) => {
+    const r = await fetch(`/api/trade/close/${id}`, { method: "POST" });
+    const res = await r.json();
+    if (res.ok) alert("Pozisyon kapatildi — PnL: $" + res.pnl.toFixed(2));
+    else alert("Kapatilamadi: " + (res.error || "bilinmeyen hata"));
+  };
 
   function connectWS() {
     const proto = location.protocol === "https:" ? "wss" : "ws";

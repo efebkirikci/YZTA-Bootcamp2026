@@ -19,11 +19,12 @@
   <div class="badges">
     <span id="badge-mode" class="badge">paper</span>
     <span id="badge-api" class="badge badge-warn">API bekleniyor…</span>
+    <span id="badge-ai" class="badge badge-off">AI kapali</span>
   </div>
 </header>
 <main>
   <section class="stats">
-    <div class="stat"><label>Ozsermaye</label><div class="val" id="stat-equity">—</div></div>
+    <div class="stat"><label>Ozsermaye</label><div class="val" id="stat-equity">—</div><div class="delta" id="stat-equity-delta"></div></div>
     <div class="stat"><label>Gerceklesen PnL</label><div class="val" id="stat-realized">—</div></div>
     <div class="stat"><label>Gerceklesmemis PnL</label><div class="val" id="stat-unrealized">—</div></div>
     <div class="stat"><label>Acik Pozisyon</label><div class="val" id="stat-open">0</div></div>
@@ -38,8 +39,8 @@
     <div class="card">
       <h2>Canli Piyasa <span class="hint" id="market-updated"></span></h2>
       <table class="tbl">
-        <thead><tr><th>Sembol</th><th>Fiyat</th><th>Funding</th></tr></thead>
-        <tbody id="market-body"><tr><td colspan="3" class="muted">Veri bekleniyor…</td></tr></tbody>
+        <thead><tr><th>Sembol</th><th>Fiyat</th><th>24s %</th><th>Funding</th><th>Hacim</th></tr></thead>
+        <tbody id="market-body"><tr><td colspan="5" class="muted">Veri bekleniyor…</td></tr></tbody>
       </table>
     </div>
   </section>
@@ -47,8 +48,8 @@
     <div class="card">
       <h2>Acil Pozisyonlar <span class="hint">(copy)</span></h2>
       <table class="tbl">
-        <thead><tr><th>Sembol</th><th>Yon</th><th>Strateji</th><th>Boyut</th><th>Giris</th><th>PnL</th><th>Funding</th></tr></thead>
-        <tbody id="positions-body"><tr><td colspan="7" class="muted">Pozisyon yok</td></tr></tbody>
+        <thead><tr><th>Sembol</th><th>Yon</th><th>Strateji</th><th>Boyut</th><th>Giris</th><th>PnL</th><th>Funding</th><th></th></tr></thead>
+        <tbody id="positions-body"><tr><td colspan="8" class="muted">Pozisyon yok</td></tr></tbody>
       </table>
       <h2 style="margin-top:18px">Son Sinyaller</h2>
       <div id="signals-list" class="signals"><div class="muted">Sinyal bekleniyor…</div></div>
@@ -67,6 +68,14 @@
           <input id="set-symbols" type="text">
         </label>
         <div class="row2">
+          <label>Funding Esigi (%)
+            <input id="set-funding_rate_threshold" type="number" step="0.001">
+          </label>
+          <label>Tarama (sn)
+            <input id="set-scan_interval_sec" type="number" min="5">
+          </label>
+        </div>
+        <div class="row2">
           <label>Max Pozisyon ($)
             <input id="set-max_position_size_usd" type="number" step="1">
           </label>
@@ -74,9 +83,32 @@
             <input id="set-max_open_positions" type="number" min="1">
           </label>
         </div>
+        <div class="row2">
+          <label>Stop-Loss (%)
+            <input id="set-stop_loss_pct" type="number" step="0.5">
+          </label>
+          <label>Take-Profit (%)
+            <input id="set-take_profit_pct" type="number" step="0.5">
+          </label>
+        </div>
+        <div class="row2">
+          <label>Portfoy Risk (%)
+            <input id="set-max_portfolio_risk_pct" type="number" step="5">
+          </label>
+          <label>Gunluk Kayip ($)
+            <input id="set-max_daily_loss_usd" type="number" step="1">
+          </label>
+        </div>
         <button type="submit" class="btn">Ayarlari Kaydet</button>
         <span id="settings-saved" class="saved"></span>
       </form>
+      <h2 style="margin-top:18px">Veri Disa Aktar</h2>
+      <div class="exports">
+        <a class="btn btn-ghost" href="/api/export/positions.csv">Pozisyonlar CSV</a>
+        <a class="btn btn-ghost" href="/api/export/signals.csv">Sinyaller CSV</a>
+        <a class="btn btn-ghost" href="/api/export/equity.csv">Ozsermaye CSV</a>
+        <a class="btn btn-ghost" href="/api/export/trades.csv">Trade CSV</a>
+      </div>
     </div>
   </section>
   <section class="card">
