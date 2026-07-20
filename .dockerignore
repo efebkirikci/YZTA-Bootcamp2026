@@ -1,0 +1,19 @@
+# Build context'ten haric tutulanlar
+venv/
+.venv/
+__pycache__/
+*.pyc
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+.env
+.git/
+.gitignore
+.github/
+tests/
+docs/
+VIDEO_NOTLARI.md
+Makefile
+CHANGELOG.md
