@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from . import config
 from .api.binance_client import BinanceClient
+from .brain.ai_analyzer import AIAnalyzer
 from .dashboard.server import create_dashboard
 from .strategies.funding_rate import FundingRateStrategy
 from .strategies.technical import TechnicalStrategy
@@ -63,6 +64,12 @@ class CopyTraderApp:
             "funding": FundingRateStrategy(self.settings),
             "technical": TechnicalStrategy(self.settings),
         }
+        self.ai = AIAnalyzer(
+            api_key=config.AI_API_KEY,
+            base_url=config.AI_BASE_URL,
+            model=config.AI_MODEL,
+            enabled=config.AI_ENABLED,
+        )
         self.state = {
             "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "scan_count": 0,
@@ -142,6 +149,14 @@ class CopyTraderApp:
             if self.settings.strategy_enabled(name):
                 signals.extend(await strat.scan(self.market))
 
+        # opsiyonel AI filtresi (fallback = sinyaller aynen gecer)
+        portfolio = {
+            "equity": self.engine.equity(self.market.prices),
+            "open_positions": self.engine.position_count(),
+            "realized_pnl": self.engine.realized_pnl(),
+        }
+        signals = await self.ai.filter_signals(signals, portfolio)
+
         for s in signals:
             self._record_signal(s)
             price = self.market.prices.get(s.symbol, s.price)
@@ -190,6 +205,7 @@ class CopyTraderApp:
             "meta": {
                 "started_at": self.state["started_at"],
                 "mode": config.TRADING_MODE,
+                "ai_enabled": self.ai.enabled,
                 "scan_count": self.state["scan_count"],
                 "last_scan": self.state["last_scan"],
                 "last_error": self.state["last_error"],

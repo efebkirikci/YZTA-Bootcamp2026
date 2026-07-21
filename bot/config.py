@@ -25,6 +25,9 @@ DEFAULT_SYMBOLS = [s.strip() for s in os.getenv(
 
 TRADING_MODE = os.getenv("TRADING_MODE", "paper").lower()
 AI_ENABLED = os.getenv("AI_ENABLED", "false").lower() == "true"
+AI_API_KEY = os.getenv("AI_API_KEY", "")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.deepseek.com/v1")
+AI_MODEL = os.getenv("AI_MODEL", "deepseek-chat")
 
 RUNTIME_SETTINGS: dict[str, tuple] = {
     "active_strategy": ("both", "Strateji: funding | technical | both", "str"),
