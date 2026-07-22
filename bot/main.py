@@ -1,4 +1,11 @@
-"""CopyTrader orchestrator — market feed + sinyal kopyalama + dashboard."""
+"""CopyTrader orchestrator — market feed + sinyal kopyalama + dashboard.
+
+Tek asyncio process uc dongu + dashboard calistirir:
+  1. market loop — public fiyat/funding/ticker tazeleme
+  2. scan loop   — strateji sinyalleri -> risk -> kopyalama (paper/live)
+  3. funding loop— 8 saatlik sabit slot odemeleri
+  4. dashboard   — FastAPI + WebSocket (localhost)
+"""
 
 import asyncio
 import logging
@@ -15,6 +22,7 @@ from .brain.ai_analyzer import AIAnalyzer
 from .dashboard.server import create_dashboard
 from .strategies.funding_rate import FundingRateStrategy
 from .strategies.technical import TechnicalStrategy
+from .trading.live_engine import LiveEngine
 from .trading.paper_engine import PaperEngine
 from .trading.risk import RiskManager
 
@@ -57,8 +65,18 @@ class CopyTraderApp:
         config.init_db()
         self.settings = config.SettingsStore()
         self.market = MarketSnapshot()
-        self.binance = BinanceClient()
-        self.engine = PaperEngine(config.DB_PATH)
+        self.binance = BinanceClient(
+            api_key=config.BINANCE_API_KEY,
+            api_secret=config.BINANCE_API_SECRET,
+        )
+        self.is_live = config.TRADING_MODE == "live" and bool(config.BINANCE_API_KEY)
+        if self.is_live:
+            self.engine = LiveEngine(config.DB_PATH, self.binance)
+            logger.warning("LIVE mod aktif — gercek Binance emirleri gonderilecek")
+        else:
+            self.engine = PaperEngine(config.DB_PATH)
+            logger.info("Paper mod aktif — simulasyon (API key gerekmez)")
+
         self.risk = RiskManager(self.settings)
         self.strategies = {
             "funding": FundingRateStrategy(self.settings),
@@ -149,7 +167,6 @@ class CopyTraderApp:
             if self.settings.strategy_enabled(name):
                 signals.extend(await strat.scan(self.market))
 
-        # opsiyonel AI filtresi (fallback = sinyaller aynen gecer)
         portfolio = {
             "equity": self.engine.equity(self.market.prices),
             "open_positions": self.engine.position_count(),
@@ -174,14 +191,19 @@ class CopyTraderApp:
             if not ok:
                 self.push_event("reject", f"{s.symbol} {s.side}: {reason}")
                 continue
-            pos_id = self.engine.open_position(
-                s.symbol, s.side, s.strategy, size, price,
-                self.market.funding_rates.get(s.symbol, 0.0), s.reason)
-            self.push_event("open", f"{s.symbol} {s.side} acildi (${size:.2f}, {s.strategy}) @ {price:.4f}")
-            self.engine._conn.execute(
-                "UPDATE signals SET executed=1 WHERE symbol=? AND side=? AND strategy=? AND executed=0",
-                (s.symbol, s.side, s.strategy))
-            self.engine._conn.commit()
+            funding_rate = self.market.funding_rates.get(s.symbol, 0.0)
+            if self.is_live:
+                pos_id = await self.engine.open_position_live(
+                    s.symbol, s.side, s.strategy, size, price, funding_rate, s.reason)
+            else:
+                pos_id = self.engine.open_position(
+                    s.symbol, s.side, s.strategy, size, price, funding_rate, s.reason)
+            if pos_id:
+                self.push_event("open", f"{s.symbol} {s.side} acildi (${size:.2f}, {s.strategy}) @ {price:.4f}")
+                self.engine._conn.execute(
+                    "UPDATE signals SET executed=1 WHERE symbol=? AND side=? AND strategy=? AND executed=0",
+                    (s.symbol, s.side, s.strategy))
+                self.engine._conn.commit()
 
         self.state["latest_signals"] = [
             {"symbol": s.symbol, "side": s.side, "strategy": s.strategy,
@@ -204,7 +226,7 @@ class CopyTraderApp:
         return {
             "meta": {
                 "started_at": self.state["started_at"],
-                "mode": config.TRADING_MODE,
+                "mode": self.state["mode"] if "mode" in self.state else config.TRADING_MODE,
                 "ai_enabled": self.ai.enabled,
                 "scan_count": self.state["scan_count"],
                 "last_scan": self.state["last_scan"],
