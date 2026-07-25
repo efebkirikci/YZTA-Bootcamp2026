@@ -3,6 +3,20 @@
 Format: [Keep a Changelog](https://keepachangelog.com/tr/1.1.0/) tabanli,
 [SemVer](https://semver.org/) uyumlu.
 
+## [v0.8.0] — 2026-07-20
+
+### Eklenen
+- FastAPI dashboard: JSON API, WebSocket canli akis, modern tek sayfa UI
+- Ayarlari botu durdurmadan degistirme (strateji, semboller, risk limitleri)
+- Ozsermaye egrisi grafigi (Chart.js)
+- CSV disa aktarim uclari
+
+## [v0.5.0] — 2026-07-13
+
+### Eklenen
+- Teknik strateji: EMA cross + RSI + MACD uclu momentum onayi
+- Pytest test paketi (funding slotlari, risk, stratejiler, paper engine)
+
 ## [v0.3.0] — 2026-07-06
 
 ### Eklenen
