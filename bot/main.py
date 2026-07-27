@@ -93,6 +93,8 @@ class CopyTraderApp:
             "scan_count": 0,
             "last_scan": "",
             "last_error": "",
+            "mode": "live" if self.is_live else "paper",
+            "ai_enabled": self.ai.enabled,
             "latest_signals": [],
             "events": [],
         }
@@ -226,8 +228,8 @@ class CopyTraderApp:
         return {
             "meta": {
                 "started_at": self.state["started_at"],
-                "mode": self.state["mode"] if "mode" in self.state else config.TRADING_MODE,
-                "ai_enabled": self.ai.enabled,
+                "mode": self.state["mode"],
+                "ai_enabled": self.state["ai_enabled"],
                 "scan_count": self.state["scan_count"],
                 "last_scan": self.state["last_scan"],
                 "last_error": self.state["last_error"],
