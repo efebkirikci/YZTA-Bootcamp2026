@@ -48,6 +48,35 @@ def test_double_close_rejected(engine):
     assert res["ok"] is False
 
 
+def test_stop_loss_fires(engine):
+    engine._conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value, description) VALUES (?,?,?)",
+        ("stop_loss_pct", "5.0", ""))
+    engine._conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value, description) VALUES (?,?,?)",
+        ("take_profit_pct", "8.0", ""))
+    engine._conn.commit()
+    pos_id = engine.open_position("BTCUSDT", "LONG", "funding", 100.0, price=60000.0)
+    closed = engine.check_exits({"BTCUSDT": 60000.0 * 0.94})  # %6 dusus → SL (%5)
+    assert len(closed) == 1
+    assert closed[0]["reason"] == "stop_loss"
+    assert engine.position_count() == 0
+
+
+def test_take_profit_fires(engine):
+    engine._conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value, description) VALUES (?,?,?)",
+        ("stop_loss_pct", "5.0", ""))
+    engine._conn.execute(
+        "INSERT OR IGNORE INTO settings (key, value, description) VALUES (?,?,?)",
+        ("take_profit_pct", "8.0", ""))
+    engine._conn.commit()
+    pos_id = engine.open_position("BTCUSDT", "LONG", "funding", 100.0, price=60000.0)
+    closed = engine.check_exits({"BTCUSDT": 60000.0 * 1.09})  # %9 artis → TP (%8)
+    assert len(closed) == 1
+    assert closed[0]["reason"] == "take_profit"
+
+
 def test_equity_moves_with_market(engine):
     engine.open_position("BTCUSDT", "LONG", "funding", 100.0, price=60000.0)
     assert engine.equity({"BTCUSDT": 63000.0}) > 1000.0
