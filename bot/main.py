@@ -144,7 +144,7 @@ class CopyTraderApp:
                 self.engine.record_equity_point(self.engine.equity(self.market.prices))
             except Exception as e:
                 self.state["last_error"] = f"scan: {e}"
-                logger.exception("Tarama hatasi: %s", e)
+                logger.exception("Tarama hatasi")
             await asyncio.sleep(int(self.settings.get_typed("scan_interval_sec") or 15))
 
     async def funding_loop(self) -> None:
