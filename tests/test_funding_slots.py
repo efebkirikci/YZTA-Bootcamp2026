@@ -37,6 +37,14 @@ def test_multiple_slots_over_days():
     assert [s.hour for s in slots] == [8, 16, 0]
 
 
+def test_sorted_dedup():
+    start = dt("2026-07-01T00:00:01+00:00")
+    end = dt("2026-07-01T08:00:00+00:00")
+    slots = funding_slots_between(start, end)
+    assert slots == sorted(set(slots))
+    assert len(slots) == 1
+
+
 def test_weekend_slots_exist():
     start = dt("2026-07-04T05:00:00+00:00")
     end = dt("2026-07-05T05:00:00+00:00")
