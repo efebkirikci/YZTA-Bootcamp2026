@@ -40,6 +40,8 @@
           `<td class="${cls(fr)}">${fr === null ? "—" : fr.toFixed(4) + "%"}</td><td>${vol}</td></tr>`;
       }).join("");
       $("market-updated").textContent = "· " + (s.market.last_update || "").replace("T", " ").slice(0, 19) + " UTC";
+    } else {
+      mb.innerHTML = '<tr><td colspan="5" class="muted">Veri bekleniyor…</td></tr>';
     }
 
     const pb = $("positions-body");
