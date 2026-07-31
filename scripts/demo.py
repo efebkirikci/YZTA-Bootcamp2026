@@ -1,11 +1,11 @@
-"""Demo — tek seferlik canli sinyal gosterimi (video / sunum icin).
+"""Demo — tek seferlik canlı sinyal gösterimi (video / sunum için).
 
-Binance public API'den canli veri ceker, aktif stratejilerin urettigi
-sinyalleri tablo halinde basar. Botu baslatmadan stratejilerin canli
-piyasada ne urettigini gostermenin en hizli yolu.
+Binance public API'den canlı veri çeker, aktif stratejilerin ürettiği
+sinyalleri tablo halinde basar. Botu başlatmadan stratejilerin canlı
+piyasada ne ürettiğini göstermenin en hızlı yolu.
 
-Kullanim:
-    python scripts/demo.py                 # tum semboller, her iki strateji
+Kullanım:
+    python scripts/demo.py                 # tüm semboller, her iki strateji
     python scripts/demo.py --symbols BTCUSDT,ETHUSDT
     python scripts/demo.py --strategy funding
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -37,9 +38,9 @@ async def run(symbols: list[str], strategy: str | None) -> None:
     market = MarketSnapshot()
     client = BinanceClient()
 
-    print("CopyTrader demo — canli sinyal gosterimi")
+    print("CopyTrader demo — canlı sinyal gösterimi")
     print("=" * 110)
-    print("Market verisi cekiliyor (Binance public API)…")
+    print("Market verisi çekiliyor (Binance public API)…")
 
     market.symbols = symbols
     prices = await client.get_all_prices()
@@ -48,7 +49,7 @@ async def run(symbols: list[str], strategy: str | None) -> None:
     for s in symbols:
         market.klines[s] = await client.get_klines(s, "1h", 120)
 
-    print(f"  {len(symbols)} sembol · fiyatlar canli\n")
+    print(f"  {len(symbols)} sembol · fiyatlar canlı\n")
 
     strategies = {
         "funding": FundingRateStrategy(settings),
@@ -59,10 +60,10 @@ async def run(symbols: list[str], strategy: str | None) -> None:
 
     total = 0
     for name, strat in strategies.items():
-        print(f"-- {strat.label} --")
+        print(f"── {strat.label} ──")
         signals = await strat.scan(market)
         if not signals:
-            print("  (sinyal yok — piyasa esiklerin altinda)")
+            print("  (sinyal yok — piyasa eşiklerin altında)")
         for s in signals:
             print(_fmt_row(s))
             total += 1
@@ -73,7 +74,7 @@ async def run(symbols: list[str], strategy: str | None) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="CopyTrader canli sinyal demo")
+    parser = argparse.ArgumentParser(description="CopyTrader canlı sinyal demo")
     parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS))
     parser.add_argument("--strategy", choices=["funding", "technical"], default=None)
     args = parser.parse_args()

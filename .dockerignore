@@ -1,8 +1,10 @@
-# Build context'ten haric tutulanlar
+# CopyTrader — YZTA Bootcamp 2026 (Takım 36)
+# Build context'ten hariç tutulacaklar (image boyutu + güvenlik)
 venv/
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 data/
 *.db
 *.db-shm

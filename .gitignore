@@ -1,4 +1,4 @@
-# Secrets
+# Secrets — asla commit etme
 .env
 
 # Python
@@ -7,7 +7,7 @@ __pycache__/
 venv/
 .venv/
 
-# Runtime
+# Runtime veri (SQLite, log)
 data/
 *.db
 *.db-shm
