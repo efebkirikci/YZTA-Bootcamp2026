@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CopyTrader — Canli Dashboard</title>
+<title>CopyTrader — Canlı Dashboard</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -13,62 +13,70 @@
     <span class="logo">◈</span>
     <div>
       <h1>CopyTrader</h1>
-      <span class="sub">YZTA Bootcamp 2026 · Takim 36 · Binance Public API</span>
+      <span class="sub">YZTA Bootcamp 2026 · Takım 36 · Binance Public API</span>
     </div>
   </div>
   <div class="badges">
     <span id="badge-mode" class="badge">paper</span>
     <span id="badge-api" class="badge badge-warn">API bekleniyor…</span>
-    <span id="badge-ai" class="badge badge-off">AI kapali</span>
+    <span id="badge-ai" class="badge badge-off">AI kapalı</span>
   </div>
 </header>
+
 <main>
+  <!-- Stats -->
   <section class="stats">
-    <div class="stat"><label>Ozsermaye</label><div class="val" id="stat-equity">—</div><div class="delta" id="stat-equity-delta"></div></div>
-    <div class="stat"><label>Gerceklesen PnL</label><div class="val" id="stat-realized">—</div></div>
-    <div class="stat"><label>Gerceklesmemis PnL</label><div class="val" id="stat-unrealized">—</div></div>
-    <div class="stat"><label>Acik Pozisyon</label><div class="val" id="stat-open">0</div></div>
+    <div class="stat"><label>Özsermaye</label><div class="val" id="stat-equity">—</div><div class="delta" id="stat-equity-delta"></div></div>
+    <div class="stat"><label>Gerçekleşen PnL</label><div class="val" id="stat-realized">—</div></div>
+    <div class="stat"><label>Gerçekleşmemiş PnL</label><div class="val" id="stat-unrealized">—</div></div>
+    <div class="stat"><label>Açık Pozisyon</label><div class="val" id="stat-open">0</div></div>
     <div class="stat"><label>Funding Toplam</label><div class="val" id="stat-funding">—</div></div>
     <div class="stat"><label>Tarama</label><div class="val" id="stat-scans">0</div></div>
   </section>
+
   <section class="grid-2">
+    <!-- Equity chart -->
     <div class="card">
-      <h2>Ozsermaye Egrisi</h2>
+      <h2>Özsermaye Eğrisi</h2>
       <canvas id="equity-chart" height="220"></canvas>
     </div>
+    <!-- Market -->
     <div class="card">
-      <h2>Canli Piyasa <span class="hint" id="market-updated"></span></h2>
+      <h2>Canlı Piyasa <span class="hint" id="market-updated"></span></h2>
       <table class="tbl">
         <thead><tr><th>Sembol</th><th>Fiyat</th><th>24s %</th><th>Funding</th><th>Hacim</th></tr></thead>
         <tbody id="market-body"><tr><td colspan="5" class="muted">Veri bekleniyor…</td></tr></tbody>
       </table>
     </div>
   </section>
+
   <section class="grid-2">
+    <!-- Positions -->
     <div class="card">
-      <h2>Acil Pozisyonlar <span class="hint">(copy)</span></h2>
+      <h2>Açık Pozisyonlar <span class="hint">(copy)</span></h2>
       <table class="tbl">
-        <thead><tr><th>Sembol</th><th>Yon</th><th>Strateji</th><th>Boyut</th><th>Giris</th><th>PnL</th><th>Funding</th><th></th></tr></thead>
+        <thead><tr><th>Sembol</th><th>Yön</th><th>Strateji</th><th>Boyut</th><th>Giriş</th><th>PnL</th><th>Funding</th><th></th></tr></thead>
         <tbody id="positions-body"><tr><td colspan="8" class="muted">Pozisyon yok</td></tr></tbody>
       </table>
       <h2 style="margin-top:18px">Son Sinyaller</h2>
       <div id="signals-list" class="signals"><div class="muted">Sinyal bekleniyor…</div></div>
     </div>
+    <!-- Settings -->
     <div class="card">
-      <h2>Ayarlar <span class="hint">(canli uygulanir)</span></h2>
+      <h2>Ayarlar <span class="hint">(canlı uygulanır)</span></h2>
       <form id="settings-form" class="settings-form">
         <label>Strateji
           <select id="set-active_strategy">
             <option value="funding">Funding Rate</option>
             <option value="technical">Teknik (EMA+RSI+MACD)</option>
-            <option value="both">Ikisi Birden</option>
+            <option value="both">İkisi Birden</option>
           </select>
         </label>
-        <label>Semboller (virgulle)
+        <label>Semboller (virgülle)
           <input id="set-symbols" type="text">
         </label>
         <div class="row2">
-          <label>Funding Esigi (%)
+          <label>Funding Eşiği (%)
             <input id="set-funding_rate_threshold" type="number" step="0.001">
           </label>
           <label>Tarama (sn)
@@ -79,7 +87,7 @@
           <label>Max Pozisyon ($)
             <input id="set-max_position_size_usd" type="number" step="1">
           </label>
-          <label>Max Acik Poz.
+          <label>Max Açık Poz.
             <input id="set-max_open_positions" type="number" min="1">
           </label>
         </div>
@@ -92,31 +100,35 @@
           </label>
         </div>
         <div class="row2">
-          <label>Portfoy Risk (%)
+          <label>Portföy Risk (%)
             <input id="set-max_portfolio_risk_pct" type="number" step="5">
           </label>
-          <label>Gunluk Kayip ($)
+          <label>Günlük Kayıp ($)
             <input id="set-max_daily_loss_usd" type="number" step="1">
           </label>
         </div>
-        <button type="submit" class="btn">Ayarlari Kaydet</button>
+        <button type="submit" class="btn">Ayarları Kaydet</button>
         <span id="settings-saved" class="saved"></span>
       </form>
-      <h2 style="margin-top:18px">Veri Disa Aktar</h2>
+      <h2 style="margin-top:18px">Veri Dışa Aktar</h2>
       <div class="exports">
         <a class="btn btn-ghost" href="/api/export/positions.csv">Pozisyonlar CSV</a>
         <a class="btn btn-ghost" href="/api/export/signals.csv">Sinyaller CSV</a>
-        <a class="btn btn-ghost" href="/api/export/equity.csv">Ozsermaye CSV</a>
+        <a class="btn btn-ghost" href="/api/export/equity.csv">Özsermaye CSV</a>
         <a class="btn btn-ghost" href="/api/export/trades.csv">Trade CSV</a>
       </div>
     </div>
   </section>
+
+  <!-- Events -->
   <section class="card">
-    <h2>Olay Akisi <span class="hint">(canli)</span></h2>
+    <h2>Olay Akışı <span class="hint">(canlı)</span></h2>
     <div id="events" class="events"><div class="muted">—</div></div>
   </section>
 </main>
-<footer>CopyTrader · veriler Binance public API'den alinir</footer>
+
+<footer>CopyTrader · paper/live copy trading engine · veriler Binance public API'den alınır</footer>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

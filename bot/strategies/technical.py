@@ -1,8 +1,18 @@
-"""Teknik indikatör stratejisi — EMA cross + RSI + MACD.
+"""Technical indicator strategy — EMA cross + RSI + MACD momentum.
 
-Üçlü onay: EMA yönü, RSI aşırı alım/satım filtresi ve MACD momentum
-çizgisi aynı yöndeyse sinyal üretilir.
+The "master" trend-following signal: all three indicators must agree on
+direction before a copy signal fires. Pure numpy on public klines data —
+no API key, no external service.
+
+Signal rules (per symbol, on the 1h close):
+- LONG  when EMA_fast > EMA_slow AND RSI < 70 (not yet overbought)
+         AND MACD line > signal line
+- SHORT when EMA_fast < EMA_slow AND RSI > 30 (not yet oversold)
+         AND MACD line < signal line
+- Otherwise FLAT (no signal).
 """
+
+from __future__ import annotations
 
 import logging
 
@@ -26,7 +36,7 @@ def ema(values: np.ndarray, period: int) -> np.ndarray:
 
 
 def rsi(values: np.ndarray, period: int = 14) -> float:
-    """Wilder RSI — son değer. Düz seride nötr (50) döner."""
+    """Wilder's RSI on the last value."""
     if len(values) < period + 1:
         return 50.0
     deltas = np.diff(values[-(period + 1):])
@@ -43,6 +53,7 @@ def rsi(values: np.ndarray, period: int = 14) -> float:
 
 
 def macd(values: np.ndarray, fast: int = 12, slow: int = 26, signal: int = 9):
+    """Returns (macd_line, signal_line) at the latest bar."""
     if len(values) < slow + signal:
         return 0.0, 0.0
     ema_fast = ema(values, fast)
@@ -60,31 +71,54 @@ class TechnicalStrategy(Strategy):
     label = "Teknik (EMA+RSI+MACD)"
 
     async def scan(self, market) -> list[Signal]:
-        signals = []
+        signals: list[Signal] = []
+        fast_p = int(self.settings.get_typed("ema_fast") or 9)
+        slow_p = int(self.settings.get_typed("ema_slow") or 21)
+        rsi_p = int(self.settings.get_typed("rsi_period") or 14)
+        rsi_lo = float(self.settings.get_typed("rsi_oversold") or 30)
+        rsi_hi = float(self.settings.get_typed("rsi_overbought") or 70)
+
         for symbol in market.symbols:
             candles = market.klines.get(symbol)
-            if not candles or len(candles) < 40:
+            if not candles or len(candles) < slow_p + 5:
                 continue
             closes = np.array([c["close"] for c in candles], dtype=float)
             price = float(closes[-1])
 
-            ema_f = ema(closes, 9)
-            ema_s = ema(closes, 21)
+            ema_f = ema(closes, fast_p)
+            ema_s = ema(closes, slow_p)
             if np.isnan(ema_f[-1]) or np.isnan(ema_s[-1]):
                 continue
-            rsi_val = rsi(closes, 14)
+            rsi_val = rsi(closes, rsi_p)
             macd_line, sig_line = macd(closes)
 
-            if ema_f[-1] > ema_s[-1] and rsi_val < 70 and macd_line > sig_line:
+            trend_up = ema_f[-1] > ema_s[-1]
+            trend_down = ema_f[-1] < ema_s[-1]
+
+            if trend_up and rsi_val < rsi_hi and macd_line > sig_line:
                 signals.append(Signal(
                     symbol=symbol, side="LONG", strategy=self.name, price=price,
-                    reason=(f"EMA9>EMA21 · RSI {rsi_val:.1f} · "
-                            f"MACD {macd_line:+.2f}>{sig_line:+.2f} — yükseliş momentumu"),
-                    confidence=0.75))
-            elif ema_f[-1] < ema_s[-1] and rsi_val > 30 and macd_line < sig_line:
+                    reason=(
+                        f"EMA{fast_p}>EMA{slow_p} · RSI {rsi_val:.1f} · "
+                        f"MACD {macd_line:+.2f}>{sig_line:+.2f} — yükseliş momentumu"
+                    ),
+                    confidence=0.75,
+                    meta={"ema_fast": round(float(ema_f[-1]), 2),
+                          "ema_slow": round(float(ema_s[-1]), 2),
+                          "rsi": round(rsi_val, 1),
+                          "macd": round(macd_line, 3)},
+                ))
+            elif trend_down and rsi_val > rsi_lo and macd_line < sig_line:
                 signals.append(Signal(
                     symbol=symbol, side="SHORT", strategy=self.name, price=price,
-                    reason=(f"EMA9<EMA21 · RSI {rsi_val:.1f} · "
-                            f"MACD {macd_line:+.2f}<{sig_line:+.2f} — düşüş momentumu"),
-                    confidence=0.75))
+                    reason=(
+                        f"EMA{fast_p}<EMA{slow_p} · RSI {rsi_val:.1f} · "
+                        f"MACD {macd_line:+.2f}<{sig_line:+.2f} — düşüş momentumu"
+                    ),
+                    confidence=0.75,
+                    meta={"ema_fast": round(float(ema_f[-1]), 2),
+                          "ema_slow": round(float(ema_s[-1]), 2),
+                          "rsi": round(rsi_val, 1),
+                          "macd": round(macd_line, 3)},
+                ))
         return signals

@@ -1,4 +1,9 @@
-"""FastAPI dashboard — localhost UI + JSON API + CSV export + WebSocket."""
+"""FastAPI dashboard — localhost UI + JSON API + WebSocket + CSV export.
+
+The dashboard reads live state from the orchestrator (`engine`) and serves
+the single-page frontend from bot/dashboard/static. No auth — localhost
+bound by default (see HOST env).
+"""
 
 from __future__ import annotations
 
@@ -47,8 +52,10 @@ def create_dashboard(engine) -> FastAPI:
 
     @app.get("/api/signals")
     async def api_signals(limit: int = 50):
-        rows = engine.engine._conn.execute(
-            "SELECT * FROM signals ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        conn = engine.engine._conn
+        rows = conn.execute(
+            "SELECT * FROM signals ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
         return [dict(r) for r in rows]
 
     @app.get("/api/market")
@@ -65,7 +72,7 @@ def create_dashboard(engine) -> FastAPI:
         if key not in engine.settings.all():
             return JSONResponse({"ok": False, "error": "bilinmeyen ayar"}, status_code=400)
         engine.settings.set(key, value)
-        engine.push_event("settings", f"Ayar guncellendi: {key} = {value}")
+        engine.push_event("settings", f"Ayar güncellendi: {key} = {value}")
         return {"ok": True}
 
     @app.post("/api/trade/close/{position_id}")
@@ -75,47 +82,67 @@ def create_dashboard(engine) -> FastAPI:
                   if p["id"] == position_id), ""), 0.0)
         if not price:
             return JSONResponse({"ok": False, "error": "fiyat yok"}, status_code=400)
-        res = engine.engine.close_position(position_id, price, "dashboard")
+        if engine.is_live:
+            res = await engine.engine.close_position_live(position_id, price, "dashboard")
+        else:
+            res = engine.engine.close_position(position_id, price, "dashboard")
         if res.get("ok"):
-            engine.push_event("close", f"#{position_id} dashboard'dan kapatildi (PnL: ${res['pnl']:.2f})")
+            engine.push_event("close", f"#{position_id} dashboard'dan kapatıldı (PnL: ${res['pnl']:.2f})")
         return res
 
+    # ── CSV export (Efe video / data pulling) ─────────────────────────
     def _csv_response(headers: list[str], rows: list[list]) -> Response:
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(headers)
         w.writerows(rows)
-        return Response(content=buf.getvalue(), media_type="text/csv",
-                        headers={"Content-Disposition": "attachment"})
+        return Response(
+            content=buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment"},
+        )
 
     @app.get("/api/export/positions.csv")
     async def export_positions():
         rows = engine.engine._conn.execute(
-            "SELECT * FROM paper_positions ORDER BY id").fetchall()
-        return _csv_response(list(rows[0].keys()) if rows else ["id", "symbol"],
-                             [list(r) for r in rows])
+            "SELECT * FROM paper_positions ORDER BY id"
+        ).fetchall()
+        return _csv_response(
+            list(rows[0].keys()) if rows else ["id", "symbol"],
+            [list(r) for r in rows],
+        )
 
     @app.get("/api/export/signals.csv")
     async def export_signals():
         rows = engine.engine._conn.execute(
-            "SELECT * FROM signals ORDER BY id").fetchall()
-        return _csv_response(list(rows[0].keys()) if rows else ["id", "symbol"],
-                             [list(r) for r in rows])
+            "SELECT * FROM signals ORDER BY id"
+        ).fetchall()
+        return _csv_response(
+            list(rows[0].keys()) if rows else ["id", "symbol"],
+            [list(r) for r in rows],
+        )
 
     @app.get("/api/export/equity.csv")
     async def export_equity():
         rows = engine.engine._conn.execute(
-            "SELECT * FROM equity_curve ORDER BY id").fetchall()
-        return _csv_response(list(rows[0].keys()) if rows else ["ts", "equity"],
-                             [list(r) for r in rows])
+            "SELECT * FROM equity_curve ORDER BY id"
+        ).fetchall()
+        return _csv_response(
+            list(rows[0].keys()) if rows else ["ts", "equity"],
+            [list(r) for r in rows],
+        )
 
     @app.get("/api/export/trades.csv")
     async def export_trades():
         rows = engine.engine._conn.execute(
-            "SELECT * FROM paper_trades ORDER BY id").fetchall()
-        return _csv_response(list(rows[0].keys()) if rows else ["id"],
-                             [list(r) for r in rows])
+            "SELECT * FROM paper_trades ORDER BY id"
+        ).fetchall()
+        return _csv_response(
+            list(rows[0].keys()) if rows else ["id"],
+            [list(r) for r in rows],
+        )
 
+    # ── WebSocket live feed ───────────────────────────────────────────
     @app.websocket("/ws")
     async def ws_feed(ws: WebSocket):
         await ws.accept()

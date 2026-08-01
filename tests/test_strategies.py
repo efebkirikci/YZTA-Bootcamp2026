@@ -1,51 +1,61 @@
-"""İndikatör ve strateji sinyal testleri."""
+"""Indicator and strategy signal tests — EMA/RSI/MACD on synthetic data."""
 
 import numpy as np
 import pytest
 
 from bot.strategies.technical import ema, macd, rsi
-from bot.strategies.funding_rate import FundingRateStrategy
 
 
 def test_ema_smoke():
     values = np.linspace(100.0, 200.0, 50)
     out = ema(values, 9)
     assert not np.isnan(out[-1])
+    # yükselen seride EMA son değere yakın ve serinin üst yarısında
     assert out[-1] > 150.0
 
 
 def test_ema_short_period_nan():
-    assert np.isnan(ema(np.array([1.0, 2.0, 3.0]), 9)[-1])
+    values = np.array([1.0, 2.0, 3.0])
+    out = ema(values, 9)
+    assert np.isnan(out[-1])  # yeterli veri yok
 
 
 def test_rsi_extremes():
+    # hep artan → RSI 100
     up = np.arange(1.0, 30.0, 0.5)
     assert rsi(up, 14) == 100.0
+    # hep azalan → RSI 0
     down = np.arange(30.0, 1.0, -0.5)
     assert rsi(down, 14) == 0.0
 
 
 def test_rsi_neutral():
+    # düz seri → 50 civarı
     flat = np.full(30, 42.0)
     assert abs(rsi(flat, 14) - 50.0) < 0.001
 
 
 def test_macd_uptrend():
-    # üstel büyüme → MACD çizgisi sinyalin üstünde
+    # üstel büyüme → MACD çizgisi yükselir, sinyalin üstünde kalır
     values = 100.0 * (1.015 ** np.arange(80))
     line, sig = macd(values)
     assert line > sig
 
 
 def test_macd_downtrend():
-    # hızlanan düşüş → MACD çizgisi sinyalin altında
+    # hızlanan düşüş → MACD çizgisi düşer, sinyalin altında kalır
     values = 300.0 - 3.0 * (1.015 ** np.arange(80))
     line, sig = macd(values)
     assert line < sig
 
 
 def test_macd_insufficient_data():
-    assert macd(np.array([1.0, 2.0, 3.0])) == (0.0, 0.0)
+    line, sig = macd(np.array([1.0, 2.0, 3.0]))
+    assert line == 0.0 and sig == 0.0
+
+
+# ── funding strategy signal direction ─────────────────────────────────
+from bot.strategies.funding_rate import FundingRateStrategy
 
 
 class _FakeSettings:
