@@ -7,7 +7,7 @@ Takım 36
 ## Takım Elemanları
 
 - Samet Yılmaz Temel (Adli Bilişim Mühendisliği, Fırat Üniversitesi)
-- _(diğer üyeler buraya eklenecek)_
+- Efe Bekir Kırıkcı (Bilgisayar Mühendisliği, Koç Üniversitesi)
 
 ## Ürün İsmi
 
